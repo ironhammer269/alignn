@@ -12,6 +12,7 @@ import tempfile
 import torch
 import sys
 import json
+import glob
 
 # from jarvis.db.jsonutils import loadjson
 import argparse
@@ -187,6 +188,10 @@ parser.add_argument(
 
 parser.add_argument(
     "--file_format", default="poscar", help="poscar/cif/xyz/pdb file format."
+)
+
+parser.add_argument(
+    "--is_folder",  action='store_true', help="Set to true if path is a folder"
 )
 
 parser.add_argument(
@@ -419,25 +424,52 @@ if __name__ == "__main__":
     model_name = args.model_name
     file_path = args.file_path
     file_format = args.file_format
+    is_folder = args.is_folder
     cutoff = args.cutoff
     max_neighbors = args.max_neighbors
-    if file_format == "poscar":
-        atoms = Atoms.from_poscar(file_path)
-    elif file_format == "cif":
-        atoms = Atoms.from_cif(file_path)
-    elif file_format == "xyz":
-        atoms = Atoms.from_xyz(file_path, box_size=500)
-    elif file_format == "pdb":
-        atoms = Atoms.from_pdb(file_path, max_lat=500)
-    else:
-        raise NotImplementedError("File format not implemented", file_format)
-
-    out_data = get_prediction(
-        model_name=model_name,
-        cutoff=float(cutoff),
-        max_neighbors=int(max_neighbors),
-        atoms=atoms,
-    )
+    
+    if is_folder:
+        atoms_array = []
+        for i in glob.glob(file_path + "/*"):
+            
+            if file_format == "poscar":
+                atoms = Atoms.from_poscar(file_path)
+            elif file_format == "cif":
+                atoms = Atoms.from_cif(file_path)
+            elif file_format == "xyz":
+                atoms = Atoms.from_xyz(file_path, box_size=500)
+            elif file_format == "pdb":
+                atoms = Atoms.from_pdb(file_path, max_lat=500)
+            else:
+                raise NotImplementedError("File format not implemented", file_format)
+                
+            atoms_array.append(atoms)
+            
+        out_data = get_multiple_predictions(
+            model_name=model_name,
+            cutoff=float(cutoff),
+            max_neighbors=int(max_neighbors),
+            atoms_array=atoms_array
+        )
+        
+    else: 
+        if file_format == "poscar":
+            atoms = Atoms.from_poscar(file_path)
+        elif file_format == "cif":
+            atoms = Atoms.from_cif(file_path)
+        elif file_format == "xyz":
+            atoms = Atoms.from_xyz(file_path, box_size=500)
+        elif file_format == "pdb":
+            atoms = Atoms.from_pdb(file_path, max_lat=500)
+        else:
+            raise NotImplementedError("File format not implemented", file_format)
+    
+        out_data = get_prediction(
+            model_name=model_name,
+            cutoff=float(cutoff),
+            max_neighbors=int(max_neighbors),
+            atoms=atoms,
+        )
 
     print("Predicted value:", model_name, file_path, out_data)
     # import glob
