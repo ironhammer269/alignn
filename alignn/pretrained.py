@@ -433,13 +433,13 @@ if __name__ == "__main__":
         for i in glob.glob(file_path + "/*"):
             
             if file_format == "poscar":
-                atoms = Atoms.from_poscar(file_path)
+                atoms = Atoms.from_poscar(i)
             elif file_format == "cif":
-                atoms = Atoms.from_cif(file_path)
+                atoms = Atoms.from_cif(i)
             elif file_format == "xyz":
-                atoms = Atoms.from_xyz(file_path, box_size=500)
+                atoms = Atoms.from_xyz(i, box_size=500)
             elif file_format == "pdb":
-                atoms = Atoms.from_pdb(file_path, max_lat=500)
+                atoms = Atoms.from_pdb(i, max_lat=500)
             else:
                 raise NotImplementedError("File format not implemented", file_format)
                 
