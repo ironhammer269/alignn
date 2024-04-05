@@ -282,6 +282,7 @@ def get_figshare_model(model_name="jv_formation_energy_peratom_alignn"):
     model.load_state_dict(torch.load(filename, map_location=device)["model"])
     model.to(device)
     model.eval()
+    os.close(new_file)
     if os.path.exists(filename):
         os.remove(filename)
     return model
@@ -356,10 +357,19 @@ def get_multiple_predictions(
             )
             pass
 
+            """
     # Note cut-off is usually 8 for solids and 5 for molecules
     def atoms_to_graph(atoms):
-        """Convert structure dict to DGLGraph."""
-        structure = Atoms.from_dict(atoms)
+        #Convert structure dict to DGLGraph.
+        #structure = Atoms.from_dict(atoms)
+
+        g, lg = Graph.atom_dgl_multigraph(
+        atoms,
+        cutoff=float(cutoff),
+        max_neighbors=max_neighbors,
+    )
+
+        
         return Graph.atom_dgl_multigraph(
             structure,
             cutoff=cutoff,
@@ -367,7 +377,7 @@ def get_multiple_predictions(
             max_neighbors=max_neighbors,
             compute_line_graph=True,
             use_canonize=use_canonize,
-        )
+        )"""
 
     test_data = get_torch_dataset(
         dataset=mem,
