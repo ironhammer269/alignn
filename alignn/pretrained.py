@@ -467,7 +467,7 @@ if __name__ == "__main__":
             cutoff=float(cutoff),
             max_neighbors=int(max_neighbors),
             atoms_array=atoms_array,
-            batch_size = batch_size,
+            batch_size = int(batch_size),
         )
         
     else: 
