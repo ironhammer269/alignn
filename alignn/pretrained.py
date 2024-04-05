@@ -214,6 +214,12 @@ parser.add_argument(
     + " construction.",
 )
 
+parser.add_argument(
+    "--batch_size",
+    default=8,
+    help="Batch size for loader.",
+)
+
 
 device = "cpu"
 if torch.cuda.is_available():
@@ -427,6 +433,7 @@ if __name__ == "__main__":
     is_folder = args.is_folder
     cutoff = args.cutoff
     max_neighbors = args.max_neighbors
+    batch_size = args.batch_size
     
     if is_folder:
         atoms_array = []
@@ -449,7 +456,8 @@ if __name__ == "__main__":
             model_name=model_name,
             cutoff=float(cutoff),
             max_neighbors=int(max_neighbors),
-            atoms_array=atoms_array
+            atoms_array=atoms_array,
+            batch_size = batch_size,
         )
         
     else: 
