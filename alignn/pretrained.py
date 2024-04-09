@@ -324,7 +324,7 @@ def get_multiple_predictions(
     cutoff=8,
     neighbor_strategy="k-nearest",
     max_neighbors=12,
-    use_canonize=True,
+    use_canonize=False,
     target="prop",
     atom_features="cgcnn",
     line_graph=True,
