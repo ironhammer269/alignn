@@ -564,6 +564,7 @@ def train_dgl(
                 net.state_dict(),
                 os.path.join(config.output_dir, current_model_name),
             )
+            print("Saved current model", config.output_dir)
             saving_msg = ""
             if val_loss < best_loss:
                 best_loss = val_loss
@@ -572,6 +573,7 @@ def train_dgl(
                     net.state_dict(),
                     os.path.join(config.output_dir, best_model_name),
                 )
+                print("Saved best model", config.output_dir)
                 # print("Saving data for epoch:", e)
                 saving_msg = "Saving model"
                 dumpjson(
@@ -695,6 +697,7 @@ def train_dgl(
             net.state_dict(),
             os.path.join(config.output_dir, last_model_name),
         )
+        print("Saved last model to", config.output_dir)
         # return test_result
 
     if config.write_predictions and classification:

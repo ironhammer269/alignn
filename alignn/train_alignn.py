@@ -19,7 +19,8 @@ from jarvis.core.atoms import Atoms
 device = "cpu"
 if torch.cuda.is_available():
     device = torch.device("cuda")
-
+    
+print("Device used is:", device)
 
 parser = argparse.ArgumentParser(
     description="Atomistic Line Graph Neural Network"
@@ -371,6 +372,7 @@ def train_for_folder(
         output_dir=config.output_dir,
     )
     # print("dataset", dataset[0])
+    print("Starting training.")
     t1 = time.time()
     train_dgl(
         config,
@@ -384,7 +386,7 @@ def train_for_folder(
     )
     t2 = time.time()
     print("Time taken (s)", t2 - t1)
-
+    
     # train_data = get_torch_dataset(
 
 
