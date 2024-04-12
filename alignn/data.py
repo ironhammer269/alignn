@@ -11,8 +11,10 @@ import torch
 import dgl
 import numpy as np
 import pandas as pd
+import pickle
 from jarvis.core.atoms import Atoms
-from alignn.graphs import Graph, StructureDataset
+from jarvis.core.specie import chem_data, get_node_attributes
+from graphs import Graph, StructureDataset
 
 # from jarvis.core.graphs import Graph, StructureDataset
 from jarvis.db.figshare import data as jdata
@@ -219,8 +221,28 @@ def get_id_train_val_test(
     return id_train, id_val, id_test
 
 
+def get_attribute_lookup(atom_features: str = "cgcnn"):
+    """Build a lookup array indexed by atomic number."""
+    max_z = max(v["Z"] for v in chem_data.values())
+
+    # get feature shape (referencing Carbon)
+    template = get_node_attributes("C", atom_features)
+
+    features = np.zeros((1 + max_z, len(template)))
+
+    for element, v in chem_data.items():
+        z = v["Z"]
+        x = get_node_attributes(element, atom_features)
+
+        if x is not None:
+            features[z, :] = x
+
+    return features
+
 def get_torch_dataset(
     dataset=[],
+    pickle_dir=None,
+    pickle_size=980,
     id_tag="jid",
     target="",
     target_atomwise="",
@@ -251,33 +273,100 @@ def get_torch_dataset(
     f.write(line)
     f.close()
 
-    graphs = load_graphs(
-        df,
-        name=name,
-        neighbor_strategy=neighbor_strategy,
-        use_canonize=use_canonize,
-        cutoff=cutoff,
-        cutoff_extra=cutoff_extra,
-        max_neighbors=max_neighbors,
-        id_tag=id_tag,
-    )
-    data = StructureDataset(
-        df,
-        graphs,
-        target=target,
-        target_atomwise=target_atomwise,
-        target_grad=target_grad,
-        target_stress=target_stress,
-        atom_features=atom_features,
-        line_graph=line_graph,
-        id_tag=id_tag,
-        classification=classification,
-    )
-    return data
+    if pickle_dir is None:
+        graphs = load_graphs(
+            df,
+            name=name,
+            neighbor_strategy=neighbor_strategy,
+            use_canonize=use_canonize,
+            cutoff=cutoff,
+            cutoff_extra=cutoff_extra,
+            max_neighbors=max_neighbors,
+            id_tag=id_tag,
+        )
+
+        features = get_attribute_lookup(atom_features)
+
+        for g in graphs:
+            z = g.ndata.pop("atom_features")
+            g.ndata["atomic_number"] = z
+            z = z.type(torch.IntTensor).squeeze()
+            f = torch.tensor(features[z]).type(torch.FloatTensor)
+            if g.num_nodes() == 1:
+                f = f.unsqueeze(0)
+            g.ndata["atom_features"] = f
+
+        data = StructureDataset(
+            df,
+            graphs,
+            target=target,
+            target_atomwise=target_atomwise,
+            target_grad=target_grad,
+            target_stress=target_stress,
+            atom_features=atom_features,
+            line_graph=line_graph,
+            id_tag=id_tag,
+            classification=classification,
+        )
+        return data
+    
+    else: #optimize data storage for large graph datasets
+        graphs = None #graphs will be loaded from pickle
+        pickle_gdir = os.path.join(pickle_dir, "g")
+
+        if os.path.exists(pickle_gdir):
+            print("Prestored pickled graph data has been found at ",pickle_gdir,".","\nMake sure that this data has been generated from your dataset.")
+        else:    
+            os.makedirs(pickle_gdir)
+            for i in range(df.shape[0]//pickle_size + 1):
+                graphs = load_graphs(
+                    df[i*pickle_size:min((i+1)*pickle_size,df.shape[0]+1)], #only compute pickle_size samples
+                    name=name,
+                    neighbor_strategy=neighbor_strategy,
+                    use_canonize=use_canonize,
+                    cutoff=cutoff,
+                    cutoff_extra=cutoff_extra,
+                    max_neighbors=max_neighbors,
+                    id_tag=id_tag,
+                )
+                
+                features = get_attribute_lookup(atom_features)
+                for g in graphs:
+                    z = g.ndata.pop("atom_features")
+                    g.ndata["atomic_number"] = z
+                    z = z.type(torch.IntTensor).squeeze()
+                    f = torch.tensor(features[z]).type(torch.FloatTensor)
+                    if g.num_nodes() == 1:
+                        f = f.unsqueeze(0)
+                    g.ndata["atom_features"] = f
+
+
+                batch_file = os.path.join(pickle_gdir, f'graph_dump_{i}.pkl') #dump into a numbered pickle which will be lazy loaded by custom dataloader
+                with open(batch_file, 'wb') as f:
+                    pickle.dump(graphs, f)
+        
+        data = StructureDataset(
+                        df,
+            graphs,
+            pickle_dir=pickle_dir,
+            pickle_size=pickle_size,
+            target=target,
+            target_atomwise=target_atomwise,
+            target_grad=target_grad,
+            target_stress=target_stress,
+            atom_features=atom_features,
+            line_graph=line_graph,
+            id_tag=id_tag,
+            classification=classification,
+        )
+        return data
+
 
 
 def get_train_val_loaders(
     dataset: str = "dft_3d",
+    pickle_dir=None,
+    pickle_size=0,
     dataset_array=None,
     target: str = "formation_energy_peratom",
     target_atomwise: str = "",
@@ -500,6 +589,8 @@ def get_train_val_loaders(
 
         train_data = get_torch_dataset(
             dataset=dataset_train,
+            pickle_dir=os.path.join(pickle_dir, "train") if pickle_dir is not None else None,
+            pickle_size=pickle_size,
             id_tag=id_tag,
             atom_features=atom_features,
             target=target,
@@ -520,6 +611,8 @@ def get_train_val_loaders(
         val_data = (
             get_torch_dataset(
                 dataset=dataset_val,
+                pickle_dir=os.path.join(pickle_dir, "val") if pickle_dir is not None else None,
+                pickle_size=pickle_size,
                 id_tag=id_tag,
                 atom_features=atom_features,
                 target=target,
@@ -543,6 +636,8 @@ def get_train_val_loaders(
         test_data = (
             get_torch_dataset(
                 dataset=dataset_test,
+                pickle_dir=os.path.join(pickle_dir, "test") if pickle_dir is not None else None,
+                pickle_size=pickle_size,
                 id_tag=id_tag,
                 atom_features=atom_features,
                 target=target,

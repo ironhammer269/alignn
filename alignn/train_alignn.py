@@ -3,11 +3,12 @@
 """Module to train for a folder with formatted dataset."""
 import os
 import csv
+import psutil
 import sys
 import json
 import zipfile
-from alignn.data import get_train_val_loaders
-from alignn.train import train_dgl
+from data import get_train_val_loaders
+from train import train_dgl
 from alignn.config import TrainingConfig
 from jarvis.db.jsonutils import loadjson
 import argparse
@@ -20,8 +21,6 @@ device = "cpu"
 if torch.cuda.is_available():
     device = torch.device("cuda")
     
-print("Device used is:", device)
-
 parser = argparse.ArgumentParser(
     description="Atomistic Line Graph Neural Network"
 )
@@ -29,6 +28,16 @@ parser.add_argument(
     "--root_dir",
     default="./",
     help="Folder with id_props.csv, structure files",
+)
+parser.add_argument(
+    "--pickle_dir",
+    default=None,
+    help="Folder for storing the pickled graph data if dataset is large",
+)
+parser.add_argument(
+    "--pickle_size",
+    default=None,
+    help="Size of the pickled graph data",
 )
 parser.add_argument(
     "--config_name",
@@ -117,6 +126,8 @@ parser.add_argument(
 
 def train_for_folder(
     root_dir="examples/sample_data",
+    pickle_dir=None,
+    pickle_size=0,
     config_name="config.json",
     # keep_data_order=False,
     classification_threshold=None,
@@ -250,6 +261,7 @@ def train_for_folder(
         dataset.append(info)
     print("len dataset", len(dataset))
     del dat
+    print(f"Memory usage after reading data: {psutil.virtual_memory().used} bytes")
     # multioutput = False
     lists_length_equal = True
     line_graph = False
@@ -340,6 +352,8 @@ def train_for_folder(
         prepare_batch,
     ) = get_train_val_loaders(
         dataset_array=dataset,
+        pickle_dir=pickle_dir,
+        pickle_size=pickle_size,
         target="target",
         target_atomwise=target_atomwise,
         target_grad=target_grad,
@@ -372,6 +386,7 @@ def train_for_folder(
         output_dir=config.output_dir,
     )
     # print("dataset", dataset[0])
+    print(f"Memory usage before starting training: {psutil.virtual_memory().used} bytes")
     print("Starting training.")
     t1 = time.time()
     train_dgl(
@@ -394,6 +409,8 @@ if __name__ == "__main__":
     args = parser.parse_args(sys.argv[1:])
     train_for_folder(
         root_dir=args.root_dir,
+        pickle_dir=args.pickle_dir,
+        pickle_size=int(args.pickle_size),
         config_name=args.config_name,
         # keep_data_order=args.keep_data_order,
         classification_threshold=args.classification_threshold,

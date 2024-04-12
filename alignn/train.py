@@ -24,6 +24,7 @@ import os
 import warnings
 import time
 from sklearn.metrics import roc_auc_score
+from tqdm import tqdm
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 torch.set_default_dtype(torch.float32)
@@ -327,7 +328,7 @@ def train_dgl(
             running_loss = 0
             train_result = []
             # for dats in train_loader:
-            for dats, jid in zip(train_loader, train_loader.dataset.ids):
+            for dats, jid in tqdm(zip(train_loader, train_loader.dataset.ids)):
                 info = {}
                 # info["id"] = jid
                 optimizer.zero_grad()
