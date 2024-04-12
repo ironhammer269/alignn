@@ -4,11 +4,13 @@ from jarvis.core.atoms import get_supercell_dims
 from jarvis.core.specie import Specie
 from jarvis.core.utils import random_colors
 import numpy as np
+import os
 import pandas as pd
 from collections import OrderedDict
 from jarvis.analysis.structure.neighbors import NeighborsAnalysis
-from jarvis.core.specie import chem_data, get_node_attributes
+from jarvis.core.specie import get_node_attributes
 import math
+import pickle
 
 # from jarvis.core.atoms import Atoms
 from collections import defaultdict
@@ -717,7 +719,9 @@ class StructureDataset(torch.utils.data.Dataset):
         self,
         df: pd.DataFrame,
         graphs: Sequence[dgl.DGLGraph],
-        target: str,
+        pickle_dir=None,
+        pickle_size=0,
+        target="",
         target_atomwise="",
         target_grad="",
         target_stress="",
@@ -726,6 +730,7 @@ class StructureDataset(torch.utils.data.Dataset):
         line_graph=False,
         classification=False,
         id_tag="jid",
+        preload_pickle=True,
     ):
         """Pytorch Dataset for atomistic graphs.
 
@@ -737,6 +742,8 @@ class StructureDataset(torch.utils.data.Dataset):
         """
         self.df = df
         self.graphs = graphs
+        self.pickle_dir = pickle_dir
+        self.pickle_size = pickle_size
         self.target = target
         self.target_atomwise = target_atomwise
         self.target_grad = target_grad
@@ -744,6 +751,8 @@ class StructureDataset(torch.utils.data.Dataset):
         self.line_graph = line_graph
         print("df", df)
         self.labels = self.df[target]
+        self.preload_pickle = preload_pickle
+        self.loaded_g_pickle, self.loaded_lg_pickle = None, None
 
         if (
             self.target_atomwise is not None and self.target_atomwise != ""
@@ -789,70 +798,83 @@ class StructureDataset(torch.utils.data.Dataset):
         )
         self.transform = transform
 
-        features = self._get_attribute_lookup(atom_features)
+        
 
         # load selected node representation
         # assume graphs contain atomic number in g.ndata["atom_features"]
-        for i, g in enumerate(graphs):
-            z = g.ndata.pop("atom_features")
-            g.ndata["atomic_number"] = z
-            z = z.type(torch.IntTensor).squeeze()
-            f = torch.tensor(features[z]).type(torch.FloatTensor)
-            if g.num_nodes() == 1:
-                f = f.unsqueeze(0)
-            g.ndata["atom_features"] = f
-            if (
-                self.target_atomwise is not None and self.target_atomwise != ""
-            ):  # and "" not in self.target_atomwise:
-                g.ndata[self.target_atomwise] = self.labels_atomwise[i]
-            if (
-                self.target_grad is not None and self.target_grad != ""
-            ):  # and "" not in  self.target_grad:
-                g.ndata[self.target_grad] = self.labels_grad[i]
-            if (
-                self.target_stress is not None and self.target_stress != ""
-            ):  # and "" not in  self.target_stress:
-                # print(
-                #    "self.labels_stress[i]",
-                #    [self.labels_stress[i] for ii in range(len(z))],
-                # )
-                g.ndata[self.target_stress] = torch.tensor(
-                    [self.labels_stress[i] for ii in range(len(z))]
-                ).type(torch.get_default_dtype())
+        if self.pickle_dir is None:
+            for i, g in enumerate(graphs):
+                """ #moved to graph generation
+                z = g.ndata.pop("atom_features")
+                g.ndata["atomic_number"] = z
+                z = z.type(torch.IntTensor).squeeze()
+                f = torch.tensor(features[z]).type(torch.FloatTensor)
+                if g.num_nodes() == 1:
+                    f = f.unsqueeze(0)
+                g.ndata["atom_features"] = f
+                """
+                if (
+                    self.target_atomwise is not None and self.target_atomwise != ""
+                ):  # and "" not in self.target_atomwise:
+                    g.ndata[self.target_atomwise] = self.labels_atomwise[i]
+                if (
+                    self.target_grad is not None and self.target_grad != ""
+                ):  # and "" not in  self.target_grad:
+                    g.ndata[self.target_grad] = self.labels_grad[i]
+                if (
+                    self.target_stress is not None and self.target_stress != ""
+                ):  # and "" not in  self.target_stress:
+                    # print(
+                    #    "self.labels_stress[i]",
+                    #    [self.labels_stress[i] for ii in range(len(z))],
+                    # )
+                    g.ndata[self.target_stress] = torch.tensor(
+                        [self.labels_stress[i] for ii in range(len(z))]
+                    ).type(torch.get_default_dtype())
+
+        else: print("Warning : atomwise/grad/stress not supported for pickled dataset")
 
         self.prepare_batch = prepare_dgl_batch
         if line_graph:
             self.prepare_batch = prepare_line_graph_batch
 
             print("building line graphs")
-            self.line_graphs = []
-            for g in tqdm(graphs):
-                lg = g.line_graph(shared=True)
-                lg.apply_edges(compute_bond_cosines)
-                self.line_graphs.append(lg)
+            
+            if self.pickle_dir == None:
+                self.line_graphs = []
+                for g in tqdm(graphs):
+                    lg = g.line_graph(shared=True)
+                    lg.apply_edges(compute_bond_cosines)
+                    self.line_graphs.append(lg)
+            
+            else:
+                pickle_lgdir = os.path.join(pickle_dir, "lg")
+                if os.path.exists(pickle_lgdir) and os.path.isdir(pickle_lgdir):
+                            print("Prestored pickled line graph data has been found at ",pickle_lgdir,".","\nMake sure that this data has been generated from your dataset.")
+                
+                else:
+                    line_graphs = []
+                    os.makedirs(pickle_lgdir)
+                    for n_file, pickle_file in enumerate(self.picklegraph_generator()):
+                        for i, g in enumerate(pickle_file):
+                            
+                            lg = g.line_graph(shared=True)
+                            lg.apply_edges(compute_bond_cosines)
+                            line_graphs.append(lg)
+                            
+                        batch_file = os.path.join(pickle_lgdir, f'graph_dump_{n_file}.pkl') #dump into a numbered pickle which will be lazy loaded by custom dataloader
+                        with open(batch_file, 'wb') as f:
+                            pickle.dump(line_graphs, f)
+                        line_graphs = []
+                        
+                        
+
 
         if classification:
             self.labels = self.labels.view(-1).long()
             print("Classification dataset.", self.labels)
 
-    @staticmethod
-    def _get_attribute_lookup(atom_features: str = "cgcnn"):
-        """Build a lookup array indexed by atomic number."""
-        max_z = max(v["Z"] for v in chem_data.values())
-
-        # get feature shape (referencing Carbon)
-        template = get_node_attributes("C", atom_features)
-
-        features = np.zeros((1 + max_z, len(template)))
-
-        for element, v in chem_data.items():
-            z = v["Z"]
-            x = get_node_attributes(element, atom_features)
-
-            if x is not None:
-                features[z, :] = x
-
-        return features
+    
 
     def __len__(self):
         """Get length."""
@@ -860,15 +882,46 @@ class StructureDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         """Get StructureDataset sample."""
-        g = self.graphs[idx]
-        label = self.labels[idx]
-        # id = self.ids[idx]
-        if self.transform:
-            g = self.transform(g)
+        if self.pickle_dir == None:
+            g = self.graphs[idx]
+            label = self.labels[idx]
+            # id = self.ids[idx]
+
+            if self.line_graph:
+                lg = self.line_graphs[idx]
+        
+        else:
+            pickle_fold_num, pickle_num = idx//self.pickle_size, idx%self.pickle_size
+
+            if self.preload_pickle:
+                if self.loaded_g_pickle == None:
+                    print("Using pickle preloading, ensure pickle_size is larger than size of dataset.")
+                    with open(os.path.join(self.pickle_dir,"g",'graph_dump_0.pkl'), 'rb') as f:
+                        self.loaded_g_pickle = pickle.load(f)
+
+                if self.loaded_lg_pickle == None and self.line_graph:
+                    print("Using pickle preloading, ensure pickle_size is larger than size of dataset.")
+                    with open(os.path.join(self.pickle_dir,"lg",'graph_dump_0.pkl'), 'rb') as f:
+                        self.loaded_lg_pickle = pickle.load(f)
+
+                g = self.loaded_g_pickle[pickle_num]
+                if self.line_graph:
+                    lg = self.loaded_lg_pickle[pickle_num]
+
+            else:
+                with open(os.path.join(self.pickle_dir,"g",f'graph_dump_{pickle_fold_num}.pkl'), 'rb') as f:
+                    g = pickle.load(f)[pickle_num]
+                
+                if self.line_graph:
+                    with open(os.path.join(self.pickle_dir,"lg",f'graph_dump_{pickle_fold_num}.pkl'), 'rb') as f:
+                        lg = pickle.load(f)[pickle_num]
+            
+            label = self.labels[idx]
+       
 
         if self.line_graph:
-            return g, self.line_graphs[idx], label
-
+            return g, lg, label
+                        
         return g, label
 
     def setup_standardizer(self, ids):
@@ -886,6 +939,14 @@ class StructureDataset(torch.utils.data.Dataset):
         self.transform = Standardize(
             self.atom_feature_mean, self.atom_feature_std
         )
+    
+    def picklegraph_generator(self): #used to load graphs to convert to line graphs
+        pickle_paths = os.listdir(os.path.join(self.pickle_dir,"g"))
+        for file in pickle_paths: #progressively load the stored pickles with graphs to convert to line graphs
+            file_path = os.path.join(self.pickle_dir, "g", file)
+            with open(file_path, 'rb') as f:
+                yield pickle.load(f)
+    
 
     @staticmethod
     def collate(samples: List[Tuple[dgl.DGLGraph, torch.Tensor]]):
@@ -899,13 +960,14 @@ class StructureDataset(torch.utils.data.Dataset):
         samples: List[Tuple[dgl.DGLGraph, dgl.DGLGraph, torch.Tensor]]
     ):
         """Dataloader helper to batch graphs cross `samples`."""
-        graphs, line_graphs, labels = map(list, zip(*samples))
+        graphs, cline_graphs, labels = map(list, zip(*samples))
         batched_graph = dgl.batch(graphs)
-        batched_line_graph = dgl.batch(line_graphs)
+        batched_line_graph = dgl.batch(cline_graphs)
         if len(labels[0].size()) > 0:
             return batched_graph, batched_line_graph, torch.stack(labels)
         else:
             return batched_graph, batched_line_graph, torch.tensor(labels)
+        
 
 
 """

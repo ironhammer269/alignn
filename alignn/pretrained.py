@@ -307,6 +307,7 @@ def get_prediction(
         atoms,
         cutoff=float(cutoff),
         max_neighbors=max_neighbors,
+        use_canonize=True
     )
     out_data = (
         model([g.to(device), lg.to(device)])
@@ -413,13 +414,18 @@ def get_multiple_predictions(
             out_data = model([g.to(device), lg.to(device)])
             out_data = out_data.cpu().numpy().tolist()
             target = target.cpu().numpy().flatten().tolist()
+            """
             info = {}
             info["id"] = id
             info["pred"] = out_data
             results.append(info)
+            """
+            results += out_data
             print_freq = int(print_freq)
             if len(results) % print_freq == 0:
                 print(len(results))
+                
+    """
     df1 = pd.DataFrame(mem)
     df2 = pd.DataFrame(results)
     df2["jid"] = df2["id"]
@@ -428,11 +434,13 @@ def get_multiple_predictions(
     for i, ii in df3.iterrows():
         info = {}
         info["id"] = ii["id"]
-        info["atoms"] = ii["atoms"]
+        #info["atoms"] = ii["atoms"]
         info["pred"] = ii["pred"]
         save.append(info)
 
     dumpjson(data=save, filename=filename)
+    """
+    return results
 
 
 if __name__ == "__main__":
