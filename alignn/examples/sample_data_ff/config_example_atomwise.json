@@ -37,6 +37,7 @@
     "max_neighbors": 12,
     "keep_data_order": true,
     "distributed":false,
+    "calculate_gradient":true,
     "model": {
         "name": "alignn_atomwise",
         "atom_input_features": 92,

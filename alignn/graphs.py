@@ -813,6 +813,8 @@ class StructureDataset(torch.utils.data.Dataset):
                     f = f.unsqueeze(0)
                 g.ndata["atom_features"] = f
                 """
+
+                z = g.ndata["atom_features"] #test
                 if (
                     self.target_atomwise is not None and self.target_atomwise != ""
                 ):  # and "" not in self.target_atomwise:

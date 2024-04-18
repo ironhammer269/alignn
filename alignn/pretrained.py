@@ -6,6 +6,7 @@ import os
 import zipfile
 from tqdm import tqdm
 from alignn.models.alignn import ALIGNN, ALIGNNConfig
+from alignn.models.alignn_atomwise import ALIGNNAtomWise, ALIGNNAtomWiseConfig
 from alignn.data import get_torch_dataset
 from torch.utils.data import DataLoader
 import tempfile
@@ -187,6 +188,12 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--model_path",
+    default="NA",
+    help="Model path for use of a locally saved model"
+)
+
+parser.add_argument(
     "--file_format", default="poscar", help="poscar/cif/xyz/pdb file format."
 )
 
@@ -293,15 +300,34 @@ def get_figshare_model(model_name="jv_formation_energy_peratom_alignn"):
         os.remove(filename)
     return model
 
+def get_local_model(path):
+    tmp = os.path.join(path, "best_model.pt")
+    cfg = os.path.join(path, "config.json")
+    print("Using chk file", tmp)
+    print("Path", os.path.abspath(path))
+    print("Config", os.path.abspath(cfg))
+    with open(cfg, 'r') as f:
+        config = json.load(f)
+
+    #model = ALIGNN(ALIGNNConfig(**config["model"]))
+    model = ALIGNNAtomWise(ALIGNNAtomWiseConfig(**config["model"]))
+    model.load_state_dict(torch.load(tmp, map_location=device))
+    model.to(device)
+    model.eval()
+    return model
 
 def get_prediction(
     model_name="jv_formation_energy_peratom_alignn",
+    model_path="NA",
     atoms=None,
     cutoff=8,
     max_neighbors=12,
 ):
     """Get model prediction on a single structure."""
-    model = get_figshare_model(model_name)
+    if model_path == "NA":
+        model = get_figshare_model(model_name)
+    else:
+        model = get_local_model(model_path)
     # print("Loading completed.")
     g, lg = Graph.atom_dgl_multigraph(
         atoms,
@@ -309,8 +335,10 @@ def get_prediction(
         max_neighbors=max_neighbors,
         use_canonize=True
     )
+
     out_data = (
-        model([g.to(device), lg.to(device)])
+        model([g.to(device), lg.to(device)])['out']
+        #model([g.to(device), lg.to(device)])
         .detach()
         .cpu()
         .numpy()
@@ -325,7 +353,7 @@ def get_multiple_predictions(
     cutoff=8,
     neighbor_strategy="k-nearest",
     max_neighbors=12,
-    use_canonize=False,
+    use_canonize=True,
     target="prop",
     atom_features="cgcnn",
     line_graph=True,
@@ -337,6 +365,7 @@ def get_multiple_predictions(
     batch_size=1,
     model=None,
     model_name="jv_formation_energy_peratom_alignn",
+    model_path="NA",
     print_freq=100,
 ):
     """Use pretrained model on a number of structures."""
@@ -357,7 +386,10 @@ def get_multiple_predictions(
 
     if model is None:
         try:
-            model = get_figshare_model(model_name)
+            if model_path == "NA":
+                model = get_figshare_model(model_name)
+            else:
+                model = get_local_model(model_path)
         except Exception as exp:
             raise ValueError(
                 'Check is the model name exists using "pretrained.py -h"', exp
@@ -411,7 +443,10 @@ def get_multiple_predictions(
         ids = test_loader.dataset.ids
         for dat, id in zip(test_loader, ids):
             g, lg, target = dat
-            out_data = model([g.to(device), lg.to(device)])
+            if model_path == "NA":
+                out_data = model([g.to(device), lg.to(device)])
+            else : 
+                out_data = model([g.to(device), lg.to(device)])['out']
             out_data = out_data.cpu().numpy().tolist()
             target = target.cpu().numpy().flatten().tolist()
             """
@@ -446,6 +481,7 @@ def get_multiple_predictions(
 if __name__ == "__main__":
     args = parser.parse_args(sys.argv[1:])
     model_name = args.model_name
+    model_path = args.model_path
     file_path = args.file_path
     file_format = args.file_format
     is_folder = args.is_folder
@@ -458,7 +494,10 @@ if __name__ == "__main__":
         for i in glob.glob(file_path + "/*"):
             
             if file_format == "poscar":
-                atoms = Atoms.from_poscar(i)
+                try :
+                    atoms = Atoms.from_poscar(i)
+                except :
+                    print("Error in file:", i)
             elif file_format == "cif":
                 atoms = Atoms.from_cif(i)
             elif file_format == "xyz":
@@ -472,6 +511,7 @@ if __name__ == "__main__":
             
         out_data = get_multiple_predictions(
             model_name=model_name,
+            model_path=model_path,
             cutoff=float(cutoff),
             max_neighbors=int(max_neighbors),
             atoms_array=atoms_array,
@@ -492,12 +532,13 @@ if __name__ == "__main__":
     
         out_data = get_prediction(
             model_name=model_name,
+            model_path=model_path,
             cutoff=float(cutoff),
             max_neighbors=int(max_neighbors),
             atoms=atoms,
         )
 
-    print("Predicted value:", model_name, file_path, out_data)
+    print("Predicted value:", file_path, out_data)
     # import glob
     # atoms_array = []
     # for i in glob.glob("alignn/examples/sample_data/*.vasp"):

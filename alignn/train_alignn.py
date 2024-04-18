@@ -9,7 +9,7 @@ import json
 import zipfile
 from data import get_train_val_loaders
 from train import train_dgl
-from alignn.config import TrainingConfig
+from config import TrainingConfig
 from jarvis.db.jsonutils import loadjson
 import argparse
 from alignn.models.alignn_atomwise import ALIGNNAtomWise, ALIGNNAtomWiseConfig
@@ -277,7 +277,7 @@ def train_for_folder(
     if multioutput:
         print("multioutput", multioutput)
         lists_length_equal = False not in [
-            len(i) == len(n_outputs[0]) for i in n_outputs
+            len(i) - 1 == len(n_outputs[0]) for i in n_outputs
         ]
         print("lists_length_equal", lists_length_equal, len(n_outputs[0]))
         if lists_length_equal:
@@ -410,7 +410,7 @@ if __name__ == "__main__":
     train_for_folder(
         root_dir=args.root_dir,
         pickle_dir=args.pickle_dir,
-        pickle_size=int(args.pickle_size),
+        pickle_size=int(args.pickle_size) if args.pickle_size != None else 0,
         config_name=args.config_name,
         # keep_data_order=args.keep_data_order,
         classification_threshold=args.classification_threshold,
