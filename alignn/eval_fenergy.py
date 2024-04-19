@@ -86,7 +86,7 @@ def is_float(string):
     except ValueError:
         return False
 
-txt_file_path =  r"C:\Users\haear\Documents\polytechnique\stage3a\scienti\eval_energy\DFT\TaVSb\data_alignn_force.txt"
+txt_file_path =  r"C:\Users\haear\Documents\polytechnique\stage3a\scienti\eval_energy\DFT\TaVSb\data_alignn_force_2.txt"
 def save_to_drive(data):
 
   # Writing to txt file

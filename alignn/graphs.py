@@ -731,6 +731,9 @@ class StructureDataset(torch.utils.data.Dataset):
         classification=False,
         id_tag="jid",
         preload_pickle=True,
+        labels_atomwise=None,
+        labels_grad=None,
+        labels_stress=None,
     ):
         """Pytorch Dataset for atomistic graphs.
 
@@ -748,49 +751,53 @@ class StructureDataset(torch.utils.data.Dataset):
         self.target_atomwise = target_atomwise
         self.target_grad = target_grad
         self.target_stress = target_stress
+        self.labels_atomwise = labels_atomwise
+        self.labels_grad = labels_grad
+        self.labels_stress = labels_stress
         self.line_graph = line_graph
         print("df", df)
         self.labels = self.df[target]
         self.preload_pickle = preload_pickle
         self.loaded_g_pickle, self.loaded_lg_pickle = None, None
 
-        if (
-            self.target_atomwise is not None and self.target_atomwise != ""
-        ):  # and "" not in self.target_atomwise:
-            # self.labels_atomwise = df[self.target_atomwise]
-            self.labels_atomwise = []
-            for ii, i in df.iterrows():
-                self.labels_atomwise.append(
-                    torch.tensor(np.array(i[self.target_atomwise])).type(
-                        torch.get_default_dtype()
+        if pickle_dir == None:
+            if (
+                self.target_atomwise is not None and self.target_atomwise != ""
+            ):  # and "" not in self.target_atomwise:
+                # self.labels_atomwise = df[self.target_atomwise]
+                self.labels_atomwise = []
+                for ii, i in df.iterrows():
+                    self.labels_atomwise.append(
+                        torch.tensor(np.array(i[self.target_atomwise])).type(
+                            torch.get_default_dtype()
+                        )
                     )
-                )
 
-        if (
-            self.target_grad is not None and self.target_grad != ""
-        ):  # and "" not in  self.target_grad :
-            # self.labels_atomwise = df[self.target_atomwise]
-            self.labels_grad = []
-            for ii, i in df.iterrows():
-                self.labels_grad.append(
-                    torch.tensor(np.array(i[self.target_grad])).type(
-                        torch.get_default_dtype()
+            if (
+                self.target_grad is not None and self.target_grad != ""
+            ):  # and "" not in  self.target_grad :
+                # self.labels_atomwise = df[self.target_atomwise]
+                self.labels_grad = []
+                for ii, i in df.iterrows():
+                    self.labels_grad.append(
+                        torch.tensor(np.array(i[self.target_grad])).type(
+                            torch.get_default_dtype()
+                        )
                     )
-                )
-            # print (self.labels_atomwise)
-        if (
-            self.target_stress is not None and self.target_stress != ""
-        ):  # and "" not in  self.target_stress :
-            # self.labels_atomwise = df[self.target_atomwise]
-            self.labels_stress = []
-            for ii, i in df.iterrows():
-                self.labels_stress.append(i[self.target_stress])
-                # self.labels_stress.append(
-                #    torch.tensor(np.array(i[self.target_stress])).type(
-                #        torch.get_default_dtype()
-                #    )
-                # )
-            # self.labels_stress = self.df[self.target_stress]
+                # print (self.labels_atomwise)
+            if (
+                self.target_stress is not None and self.target_stress != ""
+            ):  # and "" not in  self.target_stress :
+                # self.labels_atomwise = df[self.target_atomwise]
+                self.labels_stress = []
+                for ii, i in df.iterrows():
+                    self.labels_stress.append(i[self.target_stress])
+                    # self.labels_stress.append(
+                    #    torch.tensor(np.array(i[self.target_stress])).type(
+                    #        torch.get_default_dtype()
+                    #    )
+                    # )
+                # self.labels_stress = self.df[self.target_stress]
 
         self.ids = self.df[id_tag]
         self.labels = torch.tensor(self.df[target]).type(
@@ -834,7 +841,8 @@ class StructureDataset(torch.utils.data.Dataset):
                         [self.labels_stress[i] for ii in range(len(z))]
                     ).type(torch.get_default_dtype())
 
-        else: print("Warning : atomwise/grad/stress not supported for pickled dataset")
+        else: 
+            print("Warning : atomwise/grad/stress not supported for pickled dataset")
 
         self.prepare_batch = prepare_dgl_batch
         if line_graph:

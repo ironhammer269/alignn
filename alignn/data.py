@@ -313,14 +313,40 @@ def get_torch_dataset(
     else: #optimize data storage for large graph datasets
         graphs = None #graphs will be loaded from pickle
         pickle_gdir = os.path.join(pickle_dir, "g")
+        labels_atomwise, labels_grad, labels_stress = None, None, None
+        ###labels lists creation
 
-        if os.path.exists(pickle_gdir):
+        if (target_atomwise is not None and target_atomwise != ""): 
+            labels_atomwise = []
+            for ii, i in df.iterrows():
+                labels_atomwise.append(
+                    torch.tensor(np.array(i[target_atomwise])).type(
+                        torch.get_default_dtype()
+                    )
+                )
+
+        if (target_grad is not None and target_grad != ""):
+            labels_grad = []
+            for ii, i in df.iterrows():
+                labels_grad.append(
+                    torch.tensor(np.array(i[target_grad])).type(
+                        torch.get_default_dtype()
+                    )
+                )
+
+        if (target_stress is not None and target_stress != ""):  
+            labels_stress = []
+            for ii, i in df.iterrows():
+                labels_stress.append(i[target_stress])
+
+        if os.path.exists(pickle_gdir): #pass pickle_gdir to dataset and load data from pickle directly
             print("Prestored pickled graph data has been found at ",pickle_gdir,".","\nMake sure that this data has been generated from your dataset.")
-        else:    
+
+        else: #build pickle    
             os.makedirs(pickle_gdir)
-            for i in range(df.shape[0]//pickle_size + 1):
+            for j in range(df.shape[0]//pickle_size + 1):
                 graphs = load_graphs(
-                    df[i*pickle_size:min((i+1)*pickle_size,df.shape[0]+1)], #only compute pickle_size samples
+                    df[j*pickle_size:min((j+1)*pickle_size,df.shape[0]+1)], #only compute pickle_size samples
                     name=name,
                     neighbor_strategy=neighbor_strategy,
                     use_canonize=use_canonize,
@@ -329,9 +355,12 @@ def get_torch_dataset(
                     max_neighbors=max_neighbors,
                     id_tag=id_tag,
                 )
+
                 
+
                 features = get_attribute_lookup(atom_features)
-                for g in graphs:
+                for i, g in enumerate(graphs):
+                    real_index = j*pickle_size + i
                     z = g.ndata.pop("atom_features")
                     g.ndata["atomic_number"] = z
                     z = z.type(torch.IntTensor).squeeze()
@@ -340,8 +369,27 @@ def get_torch_dataset(
                         f = f.unsqueeze(0)
                     g.ndata["atom_features"] = f
 
+                    if (
+                        target_atomwise is not None and target_atomwise != ""
+                    ):  # and "" not in self.target_atomwise:
+                        g.ndata[target_atomwise] = labels_atomwise[real_index]
+                    if (
+                        target_grad is not None and target_grad != ""
+                    ):  # and "" not in  self.target_grad:
+                        g.ndata[target_grad] = labels_grad[real_index]
+                    if (
+                        target_stress is not None and target_stress != ""
+                    ):  # and "" not in  self.target_stress:
+                        # print(
+                        #    "self.labels_stress[i]",
+                        #    [self.labels_stress[i] for ii in range(len(z))],
+                        # )
+                        g.ndata[target_stress] = torch.tensor(
+                            [labels_stress[real_index] for _ in range(len(z))]
+                        ).type(torch.get_default_dtype())
 
-                batch_file = os.path.join(pickle_gdir, f'graph_dump_{i}.pkl') #dump into a numbered pickle which will be lazy loaded by custom dataloader
+
+                batch_file = os.path.join(pickle_gdir, f'graph_dump_{j}.pkl') #dump into a numbered pickle which will be lazy loaded by custom dataloader
                 with open(batch_file, 'wb') as f:
                     pickle.dump(graphs, f)
         
@@ -354,6 +402,9 @@ def get_torch_dataset(
             target_atomwise=target_atomwise,
             target_grad=target_grad,
             target_stress=target_stress,
+            labels_atomwise=labels_atomwise,
+            labels_grad=labels_grad,
+            labels_stress=labels_stress,
             atom_features=atom_features,
             line_graph=line_graph,
             id_tag=id_tag,
