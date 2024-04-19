@@ -385,7 +385,7 @@ def get_torch_dataset(
                         #    [self.labels_stress[i] for ii in range(len(z))],
                         # )
                         g.ndata[target_stress] = torch.tensor(
-                            [labels_stress[real_index] for _ in range(len(z))]
+                            [labels_stress[real_index] for _ in range(len(f))]
                         ).type(torch.get_default_dtype())
 
 
