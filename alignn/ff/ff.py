@@ -5,6 +5,7 @@ import os
 
 # import json
 import requests
+import torch
 from ase.md.nvtberendsen import NVTBerendsen
 from ase.md.nptberendsen import NPTBerendsen
 from ase.io import Trajectory
@@ -232,6 +233,8 @@ class AlignnAtomwiseCalculator(ase.calculators.calculator.Calculator):
         path=".",
         model_filename="best_model.pt",
         config_filename="config.json",
+        preload_model=False,
+        model=None,
         keep_data_order=False,
         classification_threshold=None,
         batch_size=None,
@@ -288,18 +291,22 @@ class AlignnAtomwiseCalculator(ase.calculators.calculator.Calculator):
             self.device = torch.device(
                 "cuda" if torch.cuda.is_available() else "cpu"
             )
-        model = ALIGNNAtomWise(ALIGNNAtomWiseConfig(**config["model"]))
-        model.state_dict()
-        model.load_state_dict(
-            torch.load(
-                os.path.join(path, model_filename), map_location=self.device
-            )
-        )
-        model.to(device)
-        model.eval()
 
-        self.net = model
-        self.net.to(self.device)
+        if preload_model:
+            self.net = model
+        else:
+            model = ALIGNNAtomWise(ALIGNNAtomWiseConfig(**config["model"]))
+            model.state_dict()
+            model.load_state_dict(
+                torch.load(
+                    os.path.join(path, model_filename), map_location=self.device
+                )
+            )
+            model.to(device)
+            model.eval()
+
+            self.net = model
+            self.net.to(self.device)
 
     def calculate(self, atoms, properties=None, system_changes=None):
         """Calculate properties."""
@@ -346,6 +353,7 @@ class ForceField(object):
         jarvis_atoms=None,
         model_path="out",
         model_filename="best_model.pt",
+        preload_model=False,
         include_stress=True,
         timestep=None,
         print_format=None,
@@ -362,9 +370,11 @@ class ForceField(object):
         self.jarvis_atoms = jarvis_atoms
         self.model_path = model_path
         self.model_filename = model_filename
+        self.preload_model = preload_model
+        self.is_array=preload_model
         self.include_stress = include_stress
         self.timestep = timestep
-        self.atoms = self.jarvis_atoms.ase_converter()
+        self.atoms = self.jarvis_atoms.ase_converter() if not preload_model else jarvis_atoms
         self.print_format = print_format
         self.dyn = dyn
         self.communicator = communicator
@@ -380,7 +390,7 @@ class ForceField(object):
         self.logfile = logfile
         if self.print_format is None:
             self.print_format = self.example_print
-        if self.logger is None:
+        if self.logger is None and not preload_model:
             self.logger = MDLogger(
                 self.dyn,
                 self.atoms,
@@ -393,18 +403,38 @@ class ForceField(object):
         # print ('STRUCTURE PROVIDED:')
         # print (ase_to_atoms(self.atoms))
         # print ()
-        self.atoms.set_calculator(
-            AlignnAtomwiseCalculator(
-                path=self.model_path,
-                include_stress=self.include_stress,
-                model_filename=self.model_filename,
-                stress_wt=self.stress_wt,
-                force_multiplier=self.force_multiplier,
-                force_mult_natoms=self.force_mult_natoms,
-                batch_stress=self.batch_stress,
-                # device="cuda" if torch.cuda.is_available() else "cpu",
-            )
+        self.device = torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu"
         )
+
+        if preload_model:
+            config = loadjson(os.path.join(self.model_path, "config.json"))
+            model = ALIGNNAtomWise(ALIGNNAtomWiseConfig(**config["model"]))
+            model.state_dict()
+            model.load_state_dict(
+                torch.load(
+                    os.path.join(model_path, model_filename), map_location=self.device
+                )
+            )
+            model.to(self.device)
+            model.eval()
+            self.net = model
+        
+        if not self.is_array:
+            self.atoms.set_calculator(
+                AlignnAtomwiseCalculator(
+                    path=self.model_path,
+                    include_stress=self.include_stress,
+                    model_filename=self.model_filename,
+                    preload_model=preload_model,
+                    model = model if preload_model else None,
+                    stress_wt=self.stress_wt,
+                    force_multiplier=self.force_multiplier,
+                    force_mult_natoms=self.force_mult_natoms,
+                    batch_stress=self.batch_stress,
+                    # device="cuda" if torch.cuda.is_available() else "cpu",
+                )
+            )
 
     def example_print(self):
         """Print info."""
@@ -435,11 +465,39 @@ class ForceField(object):
 
     def unrelaxed_atoms(self):
         """Get energy of a system."""
-        pe = self.atoms.get_potential_energy()
-        fs = self.atoms.get_forces()
-        # ke = self.atoms.get_kinetic_energy()
-        # print("pe", pe)
-        return pe, fs
+        if not self.is_array:
+            pe = self.atoms.get_potential_energy()
+            fs = self.atoms.get_forces()
+            # ke = self.atoms.get_kinetic_energy()
+            # print("pe", pe)
+            return pe, fs
+        
+        else:
+            data = []
+            for at in self.atoms:
+                at = at.ase_converter()
+                at.set_calculator(
+                    AlignnAtomwiseCalculator(
+                        path=self.model_path,
+                        include_stress=self.include_stress,
+                        model_filename=self.model_filename,
+                        preload_model= self.preload_model,
+                        model = self.net if self.preload_model else None,
+                        stress_wt=self.stress_wt,
+                        force_multiplier=self.force_multiplier,
+                        force_mult_natoms=self.force_mult_natoms,
+                        batch_stress=self.batch_stress,
+                        # device="cuda" if torch.cuda.is_available() else "cpu",
+                    )
+                )
+
+                pe = at.get_potential_energy()
+                fs = at.get_forces()
+                # ke = self.atoms.get_kinetic_energy()
+                # print("pe", pe)
+                data.append((pe,fs))
+            return data
+
 
     def optimize_atoms(
         self,

@@ -7,7 +7,7 @@ import zipfile
 from tqdm import tqdm
 from alignn.models.alignn import ALIGNN, ALIGNNConfig
 from alignn.models.alignn_atomwise import ALIGNNAtomWise, ALIGNNAtomWiseConfig
-from alignn.data import get_torch_dataset
+from data import get_torch_dataset
 from torch.utils.data import DataLoader
 import tempfile
 import torch
@@ -202,6 +202,10 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--use_ff",  action='store_true', help="Set to true if model uses forces"
+)
+
+parser.add_argument(
     "--file_path",
     default="alignn/examples/sample_data/POSCAR-JVASP-10.vasp",
     help="Path to file.",
@@ -314,6 +318,9 @@ def get_local_model(path):
     model.load_state_dict(torch.load(tmp, map_location=device))
     model.to(device)
     model.eval()
+
+    print(model)
+
     return model
 
 def get_prediction(
@@ -366,15 +373,10 @@ def get_multiple_predictions(
     model=None,
     model_name="jv_formation_energy_peratom_alignn",
     model_path="NA",
+    use_ff=False,
     print_freq=100,
 ):
     """Use pretrained model on a number of structures."""
-    # import glob
-    # atoms_array=[]
-    # for i in glob.glob("alignn/examples/sample_data/*.vasp"):
-    #      atoms=Atoms.from_poscar(i)
-    #      atoms_array.append(atoms)
-    # get_multiple_predictions(atoms_array=atoms_array)
 
     mem = []
     for i, ii in enumerate(atoms_array):
@@ -396,28 +398,7 @@ def get_multiple_predictions(
             )
             pass
 
-            """
-    # Note cut-off is usually 8 for solids and 5 for molecules
-    def atoms_to_graph(atoms):
-        #Convert structure dict to DGLGraph.
-        #structure = Atoms.from_dict(atoms)
-
-        g, lg = Graph.atom_dgl_multigraph(
-        atoms,
-        cutoff=float(cutoff),
-        max_neighbors=max_neighbors,
-    )
-
-        
-        return Graph.atom_dgl_multigraph(
-            structure,
-            cutoff=cutoff,
-            atom_features="atomic_number",
-            max_neighbors=max_neighbors,
-            compute_line_graph=True,
-            use_canonize=use_canonize,
-        )"""
-
+    
     test_data = get_torch_dataset(
         dataset=mem,
         target="prop",
@@ -443,38 +424,20 @@ def get_multiple_predictions(
         ids = test_loader.dataset.ids
         for dat, id in zip(test_loader, ids):
             g, lg, target = dat
+
             if model_path == "NA":
                 out_data = model([g.to(device), lg.to(device)])
             else : 
                 out_data = model([g.to(device), lg.to(device)])['out']
             out_data = out_data.cpu().numpy().tolist()
             target = target.cpu().numpy().flatten().tolist()
-            """
-            info = {}
-            info["id"] = id
-            info["pred"] = out_data
-            results.append(info)
-            """
             results += out_data
             print_freq = int(print_freq)
             if len(results) % print_freq == 0:
                 print(len(results))
-                
-    """
-    df1 = pd.DataFrame(mem)
-    df2 = pd.DataFrame(results)
-    df2["jid"] = df2["id"]
-    df3 = pd.merge(df1, df2, on="jid")
-    save = []
-    for i, ii in df3.iterrows():
-        info = {}
-        info["id"] = ii["id"]
-        #info["atoms"] = ii["atoms"]
-        info["pred"] = ii["pred"]
-        save.append(info)
 
-    dumpjson(data=save, filename=filename)
-    """
+
+                
     return results
 
 
@@ -482,6 +445,7 @@ if __name__ == "__main__":
     args = parser.parse_args(sys.argv[1:])
     model_name = args.model_name
     model_path = args.model_path
+    use_ff = args.use_ff
     file_path = args.file_path
     file_format = args.file_format
     is_folder = args.is_folder
@@ -512,6 +476,7 @@ if __name__ == "__main__":
         out_data = get_multiple_predictions(
             model_name=model_name,
             model_path=model_path,
+            use_ff=use_ff,
             cutoff=float(cutoff),
             max_neighbors=int(max_neighbors),
             atoms_array=atoms_array,

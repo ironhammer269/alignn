@@ -5,14 +5,21 @@ import argparse
 import sys
 from jarvis.core.atoms import Atoms
 import re
+import glob
 
 # from jarvis.core.graphs import Graph
-from alignn.ff.ff import (
+import sys
+sys.path.insert(0, r'C:\Users\haear\Documents\GitHub\alignn\alignn\ff')
+
+# Now you can import the function
+
+from ff import ( #from alignn.ff.ff import (
     default_path,
     ev_curve,
     surface_energy,
     vacancy_formation,
     ForceField,
+    AlignnAtomwiseCalculator,
     get_interface_energy,
 )
 import numpy as np
@@ -68,9 +75,15 @@ parser.add_argument(
     help="set device for executing the model [e.g. cpu, cuda, cuda:2]",
 )
 
+parser.add_argument(
+    "--is_folder",  action='store_true', help="Set to true if path is a folder"
+)
+
 if __name__ == "__main__":
     args = parser.parse_args(sys.argv[1:])
     model_path = args.model_path
+    preload_model = args.is_folder
+    is_folder = args.is_folder
     file_path = args.file_path
     file_format = args.file_format
     task = args.task
@@ -84,23 +97,46 @@ if __name__ == "__main__":
         on_relaxed_struct = False
 
     steps = int(args.md_steps)
-    if file_format == "poscar":
-        atoms = Atoms.from_poscar(file_path)
-    elif file_format == "cif":
-        atoms = Atoms.from_cif(file_path)
-    elif file_format == "xyz":
-        atoms = Atoms.from_xyz(file_path, box_size=500)
-    elif file_format == "pdb":
-        atoms = Atoms.from_pdb(file_path, max_lat=500)
+
+    if not is_folder:
+        if file_format == "poscar":
+            atoms = Atoms.from_poscar(file_path)
+        elif file_format == "cif":
+            atoms = Atoms.from_cif(file_path)
+        elif file_format == "xyz":
+            atoms = Atoms.from_xyz(file_path, box_size=500)
+        elif file_format == "pdb":
+            atoms = Atoms.from_pdb(file_path, max_lat=500)
+        else:
+            raise NotImplementedError("File format not implemented", file_format)
     else:
-        raise NotImplementedError("File format not implemented", file_format)
+        atoms_array = []
+        for i in glob.glob(file_path + "/*"):
+            
+            if file_format == "poscar":
+                try :
+                    atoms = Atoms.from_poscar(i)
+                except :
+                    print("Error in file:", i)
+            elif file_format == "cif":
+                atoms = Atoms.from_cif(i)
+            elif file_format == "xyz":
+                atoms = Atoms.from_xyz(i, box_size=500)
+            elif file_format == "pdb":
+                atoms = Atoms.from_pdb(i, max_lat=500)
+            else:
+                raise NotImplementedError("File format not implemented", file_format)
+                
+            atoms_array.append(atoms)
+
     if model_path == "na":
         model_path = default_path()
 
     if task == "unrelaxed_energy":
         ff = ForceField(
-            jarvis_atoms=atoms,
+            jarvis_atoms=atoms_array if is_folder else atoms,
             model_path=model_path,
+            preload_model=preload_model,
         )
         energy = ff.unrelaxed_atoms()
         print("Energy(eV)", energy)

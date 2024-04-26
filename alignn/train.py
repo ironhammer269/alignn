@@ -288,25 +288,27 @@ def train_dgl(
                     ):
                         x = np.abs(np.array(m) - np.array(n))
                         atomw.append(np.mean(x))
-            if "target_out" in i:
-                # if i["target_out"]:
-                target_out = np.array(target_out)
-                pred_out = np.array(pred_out)
-                # print('target_out',target_out,target_out.shape)
-                # print('pred_out',pred_out,pred_out.shape)
-                if classification:
-                    mean_out = log_loss(target_out, pred_out)
-                else:
-                    mean_out = mean_absolute_error(target_out, pred_out)
-            if "target_stress" in i:
-                # if i["target_stress"]:
-                mean_stress = np.array(stress).mean()
-            if "target_grad" in i:
-                # if i["target_grad"]:
-                mean_grad = np.array(grad).mean()
-            if "target_atomwise_pred" in i:
-                # if i["target_atomwise_pred"]:
-                mean_atom = np.array(atomw).mean()
+            if len(dat) > 0:
+                i = dat[-1] #make behaviour clean
+                if "target_out" in i:
+                    # if i["target_out"]:
+                    target_out = np.array(target_out)
+                    pred_out = np.array(pred_out)
+                    # print('target_out',target_out,target_out.shape)
+                    # print('pred_out',pred_out,pred_out.shape)
+                    if classification:
+                        mean_out = log_loss(target_out, pred_out)
+                    else:
+                        mean_out = mean_absolute_error(target_out, pred_out)
+                if "target_stress" in i:
+                    # if i["target_stress"]:
+                    mean_stress = np.array(stress).mean()
+                if "target_grad" in i:
+                    # if i["target_grad"]:
+                    mean_grad = np.array(grad).mean()
+                if "target_atomwise_pred" in i:
+                    # if i["target_atomwise_pred"]:
+                    mean_atom = np.array(atomw).mean()
             # print ('natoms_batch',natoms_batch)
             # if natoms_batch!=0:
             #   mean_out = mean_out/natoms_batch

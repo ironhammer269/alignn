@@ -116,6 +116,10 @@ parser.add_argument(
     help="Checkpoint file path for model",
 )
 
+parser.add_argument(
+    "--finetune",  action='store_true', help="Set to true to freeze all layers except last (only works with pretrained)"
+)
+
 
 parser.add_argument(
     "--device",
@@ -140,6 +144,7 @@ def train_for_folder(
     stresswise_key="stresses",
     file_format="poscar",
     restart_model_path=None,
+    finetune=False,
     # subtract_mean=False,
     # normalize_with_natoms=False,
     output_dir=None,
@@ -228,7 +233,9 @@ def train_for_folder(
             info["target"] = tmp
             file_path = os.path.join(root_dir, file_name)
             if file_format == "poscar":
-                atoms = Atoms.from_poscar(file_path)
+                try:
+                    atoms = Atoms.from_poscar(file_path)
+                except: print("Issue with file:", file_path)
             elif file_format == "cif":
                 atoms = Atoms.from_cif(file_path)
             elif file_format == "xyz":
@@ -291,7 +298,7 @@ def train_for_folder(
         print("Restarting the model training:", restart_model_path)
         if config.model.name == "alignn_atomwise":
             rest_config = loadjson(
-                restart_model_path.replace("best_model.pt", "config.json")
+                os.path.join(restart_model_path, "config.json")
             )
 
             tmp = ALIGNNAtomWiseConfig(**rest_config["model"])
@@ -325,10 +332,18 @@ def train_for_folder(
             #    atomwise_weight=0,
             #      )
             #    )
-            print("model", model)
+            
             model.load_state_dict(
-                torch.load(restart_model_path, map_location=device)
+                torch.load(os.path.join(restart_model_path, "best_model.pt"), map_location=device)
             )
+
+            if finetune:
+                for param in model.parameters(): #freeze all
+                    param.requires_grad = False
+
+                for name, param in model.named_parameters():
+                    if 'fc' in name: param.requires_grad = True
+
             model = model.to(device)
 
     # print ('n_outputs',n_outputs[0])
@@ -423,6 +438,7 @@ if __name__ == "__main__":
         gradwise_key=(args.force_key),
         stresswise_key=(args.stresswise_key),
         restart_model_path=(args.restart_model_path),
+        finetune=args.finetune,
         # subtract_mean=(args.subtract_mean),
         # normalize_with_natoms=(args.normalize_with_natoms),
         file_format=(args.file_format),
