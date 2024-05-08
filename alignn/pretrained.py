@@ -455,6 +455,7 @@ if __name__ == "__main__":
     
     if is_folder:
         atoms_array = []
+        out_data = []
         for i in glob.glob(file_path + "/*"):
             
             if file_format == "poscar":
@@ -472,16 +473,17 @@ if __name__ == "__main__":
                 raise NotImplementedError("File format not implemented", file_format)
                 
             atoms_array.append(atoms)
-            
-        out_data = get_multiple_predictions(
-            model_name=model_name,
-            model_path=model_path,
-            use_ff=use_ff,
-            cutoff=float(cutoff),
-            max_neighbors=int(max_neighbors),
-            atoms_array=atoms_array,
-            batch_size = int(batch_size),
-        )
+        
+        if len(atoms_array)>0:
+            out_data = get_multiple_predictions(
+                model_name=model_name,
+                model_path=model_path,
+                use_ff=use_ff,
+                cutoff=float(cutoff),
+                max_neighbors=int(max_neighbors),
+                atoms_array=atoms_array,
+                batch_size = int(batch_size),
+            )
         
     else: 
         if file_format == "poscar":
